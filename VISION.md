@@ -162,7 +162,8 @@ Referenced in the critique above; worth keeping linked here as the project's own
 ## 13. Open Questions Before Writing Code
 
 - Exact rule identifiers and JSON schema field names should be settled and written down before the first `Rule` is implemented, since changing them later is a breaking change per the versioning policy in §10.
-- Whether "renamed" file detection relies on Git's own rename detection (`git diff -M`) or is reconstructed manually needs a decision now — it affects the `ChangedFile` model in §7.
+- **Settled (Milestone 2):** renamed-file detection relies on Git's own rename detection (`git diff -M`), not manual reconstruction — `ChangedFile::$originalPath` is populated directly from Git's raw rename records. See `TicoScope\Git\GitDiffReader`.
+- **Settled (Milestone 2):** revision comparison is merge-base relative (`git diff base...head`, Git's "three-dot" semantics), not a literal two-tree diff. This matters because a base branch that has moved forward since the head revision branched off must not leak unrelated, already-merged changes into the report — the tool's premise is "what does this release introduce," not "what differs between these two trees right now." See `TicoScope\Git\GitDiffReader`.
 - The precise definition of "risky" for route-middleware changes (flagged as underspecified in §4) needs to be written as a concrete rule spec before it's added to scope, not left as a vague bullet.
 
 ---

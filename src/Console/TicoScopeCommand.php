@@ -3,9 +3,12 @@
 namespace TicoScope\Console;
 
 use Illuminate\Console\Command;
+use TicoScope\Analysis\Analyzer;
+use TicoScope\Classification\FileClassifier;
 use TicoScope\Diff\ChangedFile;
 use TicoScope\Diff\ChangeType;
 use TicoScope\Diff\Diff;
+use TicoScope\Findings\Finding;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Git\GitException;
 
@@ -15,7 +18,7 @@ final class TicoScopeCommand extends Command
 
     protected $description = 'Analyze the changes since a base revision for deployment risk';
 
-    public function handle(GitDiffReader $gitDiffReader): int
+    public function handle(GitDiffReader $gitDiffReader, Analyzer $analyzer): int
     {
         try {
             $diff = $gitDiffReader->compare($this->option('base'));
@@ -26,6 +29,8 @@ final class TicoScopeCommand extends Command
         }
 
         $this->renderDiffSummary($diff);
+        $this->newLine();
+        $this->renderFindings($analyzer->analyze($diff));
 
         return self::SUCCESS;
     }
@@ -42,8 +47,39 @@ final class TicoScopeCommand extends Command
 
         $this->newLine();
 
+        $classifier = new FileClassifier();
+
         foreach ($diff->changedFiles as $changedFile) {
-            $this->line(sprintf('%-10s%s', $this->labelFor($changedFile->changeType), $this->describe($changedFile)));
+            $this->line(sprintf(
+                '%-10s%s [%s]',
+                $this->labelFor($changedFile->changeType),
+                $this->describe($changedFile),
+                $classifier->classify($changedFile)->value,
+            ));
+        }
+    }
+
+    /**
+     * @param Finding[] $findings
+     */
+    private function renderFindings(array $findings): void
+    {
+        if ($findings === []) {
+            $this->line('No findings.');
+
+            return;
+        }
+
+        $this->line(sprintf('Findings (%d)', count($findings)));
+
+        foreach ($findings as $finding) {
+            $this->line(sprintf(
+                '  %-8s [%s] %s',
+                strtoupper($finding->severity->value),
+                $finding->ruleId,
+                $finding->file->path,
+            ));
+            $this->line(sprintf('    %s', $finding->message));
         }
     }
 

@@ -3,7 +3,7 @@
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Tests\Support\TemporaryGitRepository;
 
-it('reports the real changed files between the base and head revisions', function () {
+it('reports the real changed files, their classification, and no findings', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
     $repo->writeFile('app/ToRename.php', "<?php\n// to rename\n");
@@ -21,9 +21,10 @@ it('reports the real changed files between the base and head revisions', functio
     $this->artisan('ticoscope:check', ['--base' => 'main'])
         ->expectsOutputToContain('Comparing main → HEAD')
         ->expectsOutputToContain('3 files changed')
-        ->expectsOutputToContain('ADDED     app/Jobs/ExampleJob.php')
-        ->expectsOutputToContain('ADDED     config/services.php')
-        ->expectsOutputToContain('RENAMED   app/ToRename.php → app/Renamed.php')
+        ->expectsOutputToContain('ADDED     app/Jobs/ExampleJob.php [queue-job]')
+        ->expectsOutputToContain('ADDED     config/services.php [config]')
+        ->expectsOutputToContain('RENAMED   app/ToRename.php → app/Renamed.php [unclassified]')
+        ->expectsOutputToContain('No findings.')
         ->assertExitCode(0);
 });
 
@@ -36,6 +37,25 @@ it('reports no changed files when base and head are identical', function () {
 
     $this->artisan('ticoscope:check', ['--base' => 'main'])
         ->expectsOutputToContain('0 files changed')
+        ->expectsOutputToContain('No findings.')
+        ->assertExitCode(0);
+});
+
+it('prints a finding for a newly introduced env() call with no fallback', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('config/services.php', "<?php\n\nreturn [\n    'existing' => 'value',\n];\n");
+    $repo->commit('base');
+
+    $repo->checkoutNewBranch('feature');
+    $repo->writeFile('config/services.php', "<?php\n\nreturn [\n    'existing' => 'value',\n    'endpoint' => env('REPORTING_ENDPOINT'),\n];\n");
+    $repo->commit('add risky env call');
+
+    $this->app->instance(GitDiffReader::class, new GitDiffReader($repo->path()));
+
+    $this->artisan('ticoscope:check', ['--base' => 'main'])
+        ->expectsOutputToContain('Findings (1)')
+        ->expectsOutputToContain('[config.env-without-default] config/services.php')
+        ->expectsOutputToContain('REPORTING_ENDPOINT')
         ->assertExitCode(0);
 });
 
