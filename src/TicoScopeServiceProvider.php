@@ -7,6 +7,8 @@ use TicoScope\Analysis\Analyzer;
 use TicoScope\Console\TicoScopeCommand;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Rules\Config\EnvWithoutDefaultRule;
+use TicoScope\Rules\Queue\JobClassRemovedRule;
+use TicoScope\Rules\Queue\JobFqcnChangedRule;
 
 final class TicoScopeServiceProvider extends ServiceProvider
 {
@@ -16,6 +18,8 @@ final class TicoScopeServiceProvider extends ServiceProvider
 
         $this->app->singleton(Analyzer::class, fn ($app) => new Analyzer([
             $app->make(EnvWithoutDefaultRule::class),
+            $app->make(JobFqcnChangedRule::class),
+            $app->make(JobClassRemovedRule::class),
         ]));
     }
 

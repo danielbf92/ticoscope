@@ -5,16 +5,27 @@ namespace TicoScope\Classification;
 use TicoScope\Diff\ChangedFile;
 
 /**
- * Classifies a ChangedFile into a Laravel-relevant category by its
- * (destination) path. This is a necessary-condition heuristic, not proof —
- * see the QueueJob case below in particular.
+ * Classifies a path into a Laravel-relevant category. This is a
+ * necessary-condition heuristic, not proof — see the QueueJob case below in
+ * particular.
  */
 final class FileClassifier
 {
+    /**
+     * Classifies a ChangedFile by its destination (current) path. For a
+     * rename, this reflects what the file *is now* — established in
+     * Milestone 3 and unchanged here. Rules that need to know what a file
+     * *was* before the change (e.g. a temporal "was this a Job candidate
+     * before this deployment" question) should call classifyPath()
+     * directly with the pre-change path instead.
+     */
     public function classify(ChangedFile $file): FileCategory
     {
-        $path = $file->path;
+        return $this->classifyPath($file->path);
+    }
 
+    public function classifyPath(string $path): FileCategory
+    {
         if ($path === '.env.example') {
             return FileCategory::EnvExample;
         }

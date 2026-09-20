@@ -57,6 +57,12 @@ final class TemporaryGitRepository
 
     public function renameFile(string $from, string $to): void
     {
+        $destinationDirectory = dirname($this->path.'/'.$to);
+
+        if (! is_dir($destinationDirectory)) {
+            mkdir($destinationDirectory, recursive: true);
+        }
+
         $this->git(['mv', $from, $to]);
     }
 

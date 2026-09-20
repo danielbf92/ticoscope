@@ -56,3 +56,27 @@ it('classifies anything else as Unclassified', function () {
     expect(classify('app/Http/Controllers/HomeController.php'))->toBe(FileCategory::Unclassified);
     expect(classify('README.md'))->toBe(FileCategory::Unclassified);
 });
+
+it('exposes classifyPath() directly for classifying a bare path', function () {
+    $classifier = new FileClassifier();
+
+    expect($classifier->classifyPath('app/Jobs/Billing/SyncInvoice.php'))->toBe(FileCategory::QueueJob);
+    expect($classifier->classifyPath('config/services.php'))->toBe(FileCategory::Config);
+    expect($classifier->classifyPath('app/Services/GenerateReport.php'))->toBe(FileCategory::Unclassified);
+});
+
+it('classifies a renamed ChangedFile by its destination path, not its original path', function () {
+    $classifier = new FileClassifier();
+
+    $movedOutOfJobs = new ChangedFile(
+        path: 'app/Legacy/GenerateReport.php',
+        changeType: ChangeType::Renamed,
+        originalPath: 'app/Jobs/GenerateReport.php',
+    );
+
+    // classify() reflects "what is this file now" (Milestone 3, unchanged).
+    // A rule that needs "what was this file before" must call
+    // classifyPath($file->originalPath) directly instead.
+    expect($classifier->classify($movedOutOfJobs))->toBe(FileCategory::Unclassified);
+    expect($classifier->classifyPath($movedOutOfJobs->originalPath))->toBe(FileCategory::QueueJob);
+});

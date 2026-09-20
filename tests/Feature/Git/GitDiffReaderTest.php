@@ -197,3 +197,31 @@ it('throws when the working directory is not a Git repository', function () {
         rmdir($directory);
     }
 })->throws(NotAGitRepositoryException::class);
+
+it('readFile() returns exact content for an existing path at a valid revision', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('app/Existing.php', "<?php\n\nclass Existing\n{\n}\n");
+    $repo->commit('base');
+
+    $content = (new GitDiffReader($repo->path()))->readFile('main', 'app/Existing.php');
+
+    expect($content)->toBe("<?php\n\nclass Existing\n{\n}\n");
+});
+
+it('readFile() returns null for a missing path at a valid revision', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('app/Existing.php', "<?php\n");
+    $repo->commit('base');
+
+    $content = (new GitDiffReader($repo->path()))->readFile('main', 'app/DoesNotExist.php');
+
+    expect($content)->toBeNull();
+});
+
+it('readFile() throws, rather than returning null, for an invalid revision', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('app/Existing.php', "<?php\n");
+    $repo->commit('base');
+
+    (new GitDiffReader($repo->path()))->readFile('does-not-exist', 'app/Existing.php');
+})->throws(UnknownRevisionException::class);

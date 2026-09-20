@@ -36,6 +36,34 @@ final class GitDiffReader
         return new Diff($baseRevision, $headRevision, $changedFiles);
     }
 
+    /**
+     * Reads a file's complete content at a specific revision — needed
+     * anywhere a rule must inspect a file's actual structure (e.g. its
+     * declared class/namespace) rather than just the diff hunks, since a
+     * unified diff's context lines don't reliably carry enough of the file
+     * to reconstruct that structure.
+     *
+     * Returns null only when the revision is valid but the path doesn't
+     * exist within it — never for an invalid revision or a genuine Git/
+     * process failure, since silently treating those as "file unavailable"
+     * would turn an analysis error into a false "no finding".
+     */
+    public function readFile(string $revision, string $path): ?string
+    {
+        $this->assertIsGitRepository();
+        $this->assertRevisionExists($revision);
+
+        $process = $this->run(['show', "{$revision}:{$path}"]);
+
+        if (! $process->isSuccessful()) {
+            // The revision is already confirmed valid, so a non-zero exit
+            // here can only mean the path doesn't exist in its tree.
+            return null;
+        }
+
+        return $process->getOutput();
+    }
+
     private function assertIsGitRepository(): void
     {
         $process = $this->run(['rev-parse', '--is-inside-work-tree']);
