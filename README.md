@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 10)
+## Current state (Milestone 11)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,8 +25,8 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Eleven real analysis rules, closing out VISION.md's entire Queue Job
-  category and continuing the Migration fast-follow:
+- Twelve real analysis rules, closing out VISION.md's entire Queue Job
+  category and its entire Migration rule set:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
@@ -78,7 +78,23 @@ and scope.
     `Illuminate\Database\Schema\Blueprint` source rather than assumed —
     several of those are already nullable, or already carry an effective
     default, internally.
-- `ticoscope:check` runs the real diff and all eleven rules, prints the
+  - `migration.column-type-changed` flags a column redefined via
+    `->change()` on an existing table. This one is a deliberately honest
+    heuristic, not a real comparison: a migration only ever states the new
+    column definition, never the old one, so TicoScope has no way to know
+    whether a given `->change()` actually narrows the column (risking
+    truncation) or widens it (completely safe) — every `->change()` on a
+    recognized column-type method is flagged equally, at `Warning`, with
+    the finding's own message saying this explicitly rather than
+    overclaiming certainty. Reconstructing a column's real previous type
+    would require replaying a table's entire migration history, a
+    materially bigger primitive than a diff of what changed, and was
+    deliberately not attempted for v0.1 — see VISION.md §4's own
+    acknowledgment that pattern-based migration rules necessarily produce
+    both false positives (a harmless widening `->change()`) and false
+    negatives (a risky change expressed via raw SQL instead of the
+    Blueprint fluent API).
+- `ticoscope:check` runs the real diff and all twelve rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -95,9 +111,8 @@ and scope.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: a column-type-change rule, Composer rules, the
-`.env.example` cross-reference half of the config/env rule, route rules,
-CI/GitHub Action integration.
+Not yet implemented: Composer rules, the `.env.example` cross-reference
+half of the config/env rule, route rules, CI/GitHub Action integration.
 
 ## Installation
 

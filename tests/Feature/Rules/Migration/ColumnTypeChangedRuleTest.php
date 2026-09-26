@@ -4,25 +4,26 @@ use TicoScope\Git\GitCommandFailedException;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Rules\Migration\ColumnDroppedRule;
 use TicoScope\Rules\Migration\ColumnRenamedRule;
+use TicoScope\Rules\Migration\ColumnTypeChangedRule;
 use TicoScope\Rules\Migration\NonNullableWithoutDefaultRule;
 use TicoScope\Rules\Migration\TableDroppedRule;
 use TicoScope\Tests\Support\TemporaryGitRepository;
 
-function analyzeNonNullableWithoutDefault(TemporaryGitRepository $repo, string $base = 'main', string $head = 'feature'): array
+function analyzeColumnTypeChanged(TemporaryGitRepository $repo, string $base = 'main', string $head = 'feature'): array
 {
     $gitDiffReader = new GitDiffReader($repo->path());
     $diff = $gitDiffReader->compare($base, $head);
 
-    return (new NonNullableWithoutDefaultRule($gitDiffReader))->analyze($diff);
+    return (new ColumnTypeChangedRule($gitDiffReader))->analyze($diff);
 }
 
-it('fires for a newly added migration adding a non-nullable column with no default', function () {
+it('fires for a newly added migration redefining a column via ->change()', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
     $repo->commit('base');
 
     $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_add_reference.php', <<<'PHP'
+    $repo->writeFile('database/migrations/2026_01_01_000000_narrow_reference.php', <<<'PHP'
         <?php
 
         use Illuminate\Database\Migrations\Migration;
@@ -34,27 +35,27 @@ it('fires for a newly added migration adding a non-nullable column with no defau
             public function up(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference');
+                    $table->string('reference', 50)->change();
                 });
             }
         };
         PHP);
-    $repo->commit('add migration adding a risky column');
+    $repo->commit('narrow an existing column');
 
-    $findings = analyzeNonNullableWithoutDefault($repo);
+    $findings = analyzeColumnTypeChanged($repo);
 
     expect($findings)->toHaveCount(1);
-    expect($findings[0]->ruleId)->toBe('migration.non-nullable-without-default');
+    expect($findings[0]->ruleId)->toBe('migration.column-type-changed');
     expect($findings[0]->reasonCode)->toBe('reference');
     expect($findings[0]->message)->toBe(
-        'Migration adds column "reference" to table "orders" with no nullable() call and no default(). If '.
-        '"orders" already has rows, this may fail outright or behave unexpectedly depending on your database\'s '.
-        'strict mode. Add ->nullable() or ->default(...), or confirm the table is empty in every environment '.
-        'this runs against.',
+        'Migration redefines column "reference" on table "orders" via ->change(). TicoScope cannot see the '.
+        'column\'s previous definition from this migration alone — if the new definition is narrower (a '.
+        'shorter string length, a smaller integer size, reduced decimal precision, etc.), this can silently '.
+        'truncate existing data. Verify the previous column definition before deploying.',
     );
 });
 
-it('fires for a modified migration adding a non-nullable column with no default', function () {
+it('fires for a modified migration redefining a column via ->change()', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
         <?php
@@ -88,14 +89,14 @@ it('fires for a modified migration adding a non-nullable column with no default'
             public function up(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->integer('quantity');
+                    $table->integer('quantity')->change();
                 });
             }
         };
         PHP);
     $repo->commit('edit migration before it has run');
 
-    $findings = analyzeNonNullableWithoutDefault($repo);
+    $findings = analyzeColumnTypeChanged($repo);
 
     expect($findings)->toHaveCount(1);
     expect($findings[0]->reasonCode)->toBe('quantity');
@@ -120,17 +121,17 @@ it('does not fire when Schema::create() is used instead of Schema::table()', fun
             {
                 Schema::create('orders', function (Blueprint $table) {
                     $table->id();
-                    $table->string('status');
+                    $table->string('status', 50)->change();
                 });
             }
         };
         PHP);
     $repo->commit('add a brand new table');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
-it('does not fire when the chain includes ->nullable()', function () {
+it('does not fire when there is no ->change() call at all', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
     $repo->commit('base');
@@ -148,219 +149,14 @@ it('does not fire when the chain includes ->nullable()', function () {
             public function up(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference')->nullable();
+                    $table->string('reference');
                 });
             }
         };
         PHP);
-    $repo->commit('add a nullable column');
+    $repo->commit('add a plain new column, no ->change()');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
-});
-
-it('does not fire when the chain includes ->nullable(false), a documented false-negative', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference')->nullable(false);
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add a column with an explicit nullable(false)');
-
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
-});
-
-it('does not fire when the chain includes ->default(...)', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->boolean('is_active')->default(true);
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add a column with a default');
-
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
-});
-
-it('does not fire for timestamp() with ->useCurrent()', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->timestamp('processed_at')->useCurrent();
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add a timestamp defaulting to current time');
-
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
-});
-
-it('still fires when only ->useCurrentOnUpdate() is present, not ->useCurrent()', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->timestamp('processed_at')->useCurrentOnUpdate();
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add a timestamp with only useCurrentOnUpdate');
-
-    $findings = analyzeNonNullableWithoutDefault($repo);
-
-    expect($findings)->toHaveCount(1);
-    expect($findings[0]->reasonCode)->toBe('processed_at');
-});
-
-it('still fires for foreignId(...)->constrained() with no nullable/default', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->foreignId('user_id')->constrained();
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add a constrained foreign key column with no nullable/default');
-
-    $findings = analyzeNonNullableWithoutDefault($repo);
-
-    expect($findings)->toHaveCount(1);
-    expect($findings[0]->reasonCode)->toBe('user_id');
-});
-
-it('does not fire for excluded macros on an existing table (timestamps, softDeletes, rememberToken, id)', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->id();
-                    $table->timestamps();
-                    $table->softDeletes();
-                    $table->rememberToken();
-                });
-            }
-        };
-        PHP);
-    $repo->commit('add only excluded macro columns');
-
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
-});
-
-it('does not fire when the chain ends in ->change() (altering, not adding)', function () {
-    $repo = new TemporaryGitRepository();
-    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
-    $repo->commit('base');
-
-    $repo->checkoutNewBranch('feature');
-    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
-        <?php
-
-        use Illuminate\Database\Migrations\Migration;
-        use Illuminate\Database\Schema\Blueprint;
-        use Illuminate\Support\Facades\Schema;
-
-        return new class extends Migration
-        {
-            public function up(): void
-            {
-                Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference', 500)->change();
-                });
-            }
-        };
-        PHP);
-    $repo->commit('alter an existing column');
-
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
 it('does not fire when the column-name argument is not a literal', function () {
@@ -382,18 +178,46 @@ it('does not fire when the column-name argument is not a literal', function () {
             {
                 Schema::table('orders', function (Blueprint $table) {
                     foreach (['a', 'b'] as $name) {
-                        $table->string($name);
+                        $table->string($name)->change();
                     }
                 });
             }
         };
         PHP);
-    $repo->commit('add columns with a non-literal name');
+    $repo->commit('redefine columns with a non-literal name');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
-it('fires once per column when two separate non-nullable columns are added', function () {
+it('does not fire when the first call is not a recognized column-type method', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
+    $repo->commit('base');
+
+    $repo->checkoutNewBranch('feature');
+    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
+        <?php
+
+        use Illuminate\Database\Migrations\Migration;
+        use Illuminate\Database\Schema\Blueprint;
+        use Illuminate\Support\Facades\Schema;
+
+        return new class extends Migration
+        {
+            public function up(): void
+            {
+                Schema::table('orders', function (Blueprint $table) {
+                    $table->dropColumn('legacy_reference')->change();
+                });
+            }
+        };
+        PHP);
+    $repo->commit('an unrecognized method chained with change()');
+
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
+});
+
+it('fires once per column when two separate columns are redefined via ->change()', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
     $repo->commit('base');
@@ -411,15 +235,15 @@ it('fires once per column when two separate non-nullable columns are added', fun
             public function up(): void
             {
                 Schema::table('customers', function (Blueprint $table) {
-                    $table->string('first_name');
-                    $table->string('last_name');
+                    $table->string('first_name', 50)->change();
+                    $table->string('last_name', 50)->change();
                 });
             }
         };
         PHP);
-    $repo->commit('add two risky columns');
+    $repo->commit('redefine two columns');
 
-    $findings = analyzeNonNullableWithoutDefault($repo);
+    $findings = analyzeColumnTypeChanged($repo);
 
     expect($findings)->toHaveCount(2);
     $reasonCodes = array_map(fn ($f) => $f->reasonCode, $findings);
@@ -443,14 +267,14 @@ it('does not fire for a non-Migration-classified file', function () {
             public function run(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference');
+                    $table->string('reference', 50)->change();
                 });
             }
         }
         PHP);
     $repo->commit('add a non-migration file with the same pattern');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
 it('does not fire for a deleted migration', function () {
@@ -467,7 +291,7 @@ it('does not fire for a deleted migration', function () {
             public function up(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference');
+                    $table->string('reference', 50)->change();
                 });
             }
         };
@@ -478,7 +302,7 @@ it('does not fire for a deleted migration', function () {
     $repo->deleteFile('database/migrations/2026_01_01_000000_example.php');
     $repo->commit('delete migration');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
 it('does not fire and does not throw for malformed migration content', function () {
@@ -494,7 +318,7 @@ it('does not fire and does not throw for malformed migration content', function 
     $exception = null;
 
     try {
-        $findings = analyzeNonNullableWithoutDefault($repo);
+        $findings = analyzeColumnTypeChanged($repo);
     } catch (Throwable $caught) {
         $exception = $caught;
     }
@@ -521,17 +345,17 @@ it('does not swallow an unexpected Git/infrastructure failure from readFile()', 
             public function up(): void
             {
                 Schema::table('orders', function (Blueprint $table) {
-                    $table->string('reference');
+                    $table->string('reference', 50)->change();
                 });
             }
         };
         PHP);
-    $repo->commit('add migration adding a risky column');
+    $repo->commit('narrow an existing column');
 
     $diff = (new GitDiffReader($repo->path()))->compare('main', 'feature');
     $vanishedReader = new GitDiffReader(sys_get_temp_dir().'/ticoscope-vanished-'.uniqid());
 
-    (new NonNullableWithoutDefaultRule($vanishedReader))->analyze($diff);
+    (new ColumnTypeChangedRule($vanishedReader))->analyze($diff);
 })->throws(GitCommandFailedException::class);
 
 it('does not attribute a shadowed nested-closure variable at the rule level either', function () {
@@ -555,20 +379,20 @@ it('does not attribute a shadowed nested-closure variable at the rule level eith
                     $rows = DB::table('legacy_data')->get();
 
                     $rows->each(function ($table) {
-                        $table->string('should_not_count');
+                        $table->string('should_not_count', 10)->change();
                     });
 
-                    $table->string('status')->nullable();
+                    $table->string('status');
                 });
             }
         };
         PHP);
     $repo->commit('add migration with a shadowed variable');
 
-    expect(analyzeNonNullableWithoutDefault($repo))->toBe([]);
+    expect(analyzeColumnTypeChanged($repo))->toBe([]);
 });
 
-it('fires alongside ColumnDroppedRule, ColumnRenamedRule, and TableDroppedRule when one migration does all four things', function () {
+it('fires alongside every other Migration rule when one migration does all five things', function () {
     $repo = new TemporaryGitRepository();
     $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
     $repo->commit('base');
@@ -589,25 +413,66 @@ it('fires alongside ColumnDroppedRule, ColumnRenamedRule, and TableDroppedRule w
                     $table->string('reference');
                     $table->renameColumn('note', 'notes');
                     $table->dropColumn('unused');
+                    $table->integer('quantity')->change();
                 });
 
                 Schema::dropIfExists('legacy_orders');
             }
         };
         PHP);
-    $repo->commit('add, rename, drop a column, and drop a table in one migration');
+    $repo->commit('add, rename, drop, change a column, and drop a table in one migration');
 
     $gitDiffReader = new GitDiffReader($repo->path());
     $diff = $gitDiffReader->compare('main', 'feature');
 
+    $typeChangedFindings = (new ColumnTypeChangedRule($gitDiffReader))->analyze($diff);
     $addedFindings = (new NonNullableWithoutDefaultRule($gitDiffReader))->analyze($diff);
     $renamedFindings = (new ColumnRenamedRule($gitDiffReader))->analyze($diff);
     $droppedFindings = (new ColumnDroppedRule($gitDiffReader))->analyze($diff);
     $tableFindings = (new TableDroppedRule($gitDiffReader))->analyze($diff);
 
+    expect($typeChangedFindings)->toHaveCount(1);
+    expect($typeChangedFindings[0]->ruleId)->toBe('migration.column-type-changed');
+    expect($typeChangedFindings[0]->reasonCode)->toBe('quantity');
     expect($addedFindings)->toHaveCount(1);
-    expect($addedFindings[0]->ruleId)->toBe('migration.non-nullable-without-default');
     expect($renamedFindings)->toHaveCount(1);
     expect($droppedFindings)->toHaveCount(1);
     expect($tableFindings)->toHaveCount(1);
+});
+
+it('M10/M11 boundary: $table->string("foo", 50)->change() fires in M11 only, never M10', function () {
+    $repo = new TemporaryGitRepository();
+    $repo->writeFile('app/Existing.php', "<?php\n// existing\n");
+    $repo->commit('base');
+
+    $repo->checkoutNewBranch('feature');
+    $repo->writeFile('database/migrations/2026_01_01_000000_example.php', <<<'PHP'
+        <?php
+
+        use Illuminate\Database\Migrations\Migration;
+        use Illuminate\Database\Schema\Blueprint;
+        use Illuminate\Support\Facades\Schema;
+
+        return new class extends Migration
+        {
+            public function up(): void
+            {
+                Schema::table('orders', function (Blueprint $table) {
+                    $table->string('foo', 50)->change();
+                });
+            }
+        };
+        PHP);
+    $repo->commit('narrow an existing column via the exact M10/M11 boundary fixture');
+
+    $gitDiffReader = new GitDiffReader($repo->path());
+    $diff = $gitDiffReader->compare('main', 'feature');
+
+    $m10Findings = (new NonNullableWithoutDefaultRule($gitDiffReader))->analyze($diff);
+    $m11Findings = (new ColumnTypeChangedRule($gitDiffReader))->analyze($diff);
+
+    expect($m10Findings)->toBe([]);
+    expect($m11Findings)->toHaveCount(1);
+    expect($m11Findings[0]->ruleId)->toBe('migration.column-type-changed');
+    expect($m11Findings[0]->reasonCode)->toBe('foo');
 });

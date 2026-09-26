@@ -15,23 +15,25 @@ use TicoScope\Php\SchemaCallExtractor;
 use TicoScope\Rules\Rule;
 
 /**
- * Flags a column added to an EXISTING table (Schema::table(), never
- * Schema::create() — a brand new table has no rows, so this pattern is
- * simply how tables are normally defined) with no ->nullable() and no
- * ->default() in its chain. Only actually harmful if the table already has
- * rows, which this static tool cannot know — hence Warning, not Critical,
- * unlike ColumnDroppedRule/TableDroppedRule's unconditionally destructive
- * framing.
+ * Flags a column redefined via ->change() on an EXISTING table
+ * (Schema::table(), never Schema::create() — there is no "previous
+ * definition" to change mid-creation). This is a deliberately honest
+ * heuristic: a migration only ever states the NEW definition, never the
+ * old one, so this tool cannot know whether a given ->change() actually
+ * narrows the column (and would therefore truncate existing data) or
+ * widens it (completely safe). Every ->change() on a recognized
+ * column-type method is flagged equally, at Warning, with the message
+ * saying plainly that the previous type is unknown — see VISION §4's
+ * explicit acceptance of pattern-based imprecision for migration rules.
  *
- * The candidate method allowlist (BlueprintColumnMethods) was built by
- * reading the real Illuminate\Database\Schema\Blueprint source, not
- * assumed: methods like timestamps()/softDeletes()/rememberToken()/id()
- * are deliberately excluded because they're already nullable (or an
- * auto-increment primary key) internally, and morphs()-family macros are
- * excluded because they add more than one column per call, which doesn't
- * fit this rule's one-chain-one-column model.
+ * Deliberately not attempted: reconstructing the column's real previous
+ * type from migration history (a materially bigger primitive than a diff
+ * of what changed), or a narrow same-file old-vs-new comparison for the
+ * rare case of an unreleased migration's own ->change() being edited again
+ * (would make this rule's certainty inconsistent between the common case
+ * and that rare one, which is worse for trust than one uniform heuristic).
  */
-final class NonNullableWithoutDefaultRule implements Rule
+final class ColumnTypeChangedRule implements Rule
 {
     public function __construct(
         private readonly GitDiffReader $gitDiffReader,
@@ -42,7 +44,7 @@ final class NonNullableWithoutDefaultRule implements Rule
 
     public function id(): string
     {
-        return 'migration.non-nullable-without-default';
+        return 'migration.column-type-changed';
     }
 
     /**
@@ -79,7 +81,7 @@ final class NonNullableWithoutDefaultRule implements Rule
                 }
 
                 foreach ($operation->statements as $chain) {
-                    $column = $this->riskyColumn($chain);
+                    $column = $this->changedColumn($chain);
 
                     if ($column !== null) {
                         $findings[] = $this->toFinding($file, $operation->table, $column);
@@ -94,16 +96,24 @@ final class NonNullableWithoutDefaultRule implements Rule
     /**
      * @param list<array{method: string, args: list<string|null|list<string|null>>}> $chain
      */
-    private function riskyColumn(array $chain): ?string
+    private function changedColumn(array $chain): ?string
     {
         if ($chain === []) {
             return null;
         }
 
+        $hasChange = false;
+
         foreach ($chain as $step) {
             if ($step['method'] === 'change') {
-                return null;
+                $hasChange = true;
+
+                break;
             }
+        }
+
+        if (! $hasChange) {
+            return null;
         }
 
         $first = $chain[0];
@@ -118,19 +128,6 @@ final class NonNullableWithoutDefaultRule implements Rule
             return null;
         }
 
-        foreach ($chain as $step) {
-            if ($step['method'] === 'nullable' || $step['method'] === 'default') {
-                return null;
-            }
-
-            if (
-                $step['method'] === 'useCurrent'
-                && in_array($first['method'], BlueprintColumnMethods::USE_CURRENT_ELIGIBLE, true)
-            ) {
-                return null;
-            }
-        }
-
         return $column;
     }
 
@@ -141,12 +138,11 @@ final class NonNullableWithoutDefaultRule implements Rule
             severity: Severity::Warning,
             file: $file,
             message: sprintf(
-                'Migration adds column "%s" to table "%s" with no nullable() call and no default(). If "%s" '.
-                'already has rows, this may fail outright or behave unexpectedly depending on your database\'s '.
-                'strict mode. Add ->nullable() or ->default(...), or confirm the table is empty in every '.
-                'environment this runs against.',
+                'Migration redefines column "%s" on table "%s" via ->change(). TicoScope cannot see the '.
+                'column\'s previous definition from this migration alone — if the new definition is narrower '.
+                '(a shorter string length, a smaller integer size, reduced decimal precision, etc.), this can '.
+                'silently truncate existing data. Verify the previous column definition before deploying.',
                 $column,
-                $table,
                 $table,
             ),
             reasonCode: $column,
