@@ -8,6 +8,7 @@ use TicoScope\Console\TicoScopeCommand;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Rules\Composer\ComposerPackageMajorBumpRule;
 use TicoScope\Rules\Composer\ComposerPackageRemovedRule;
+use TicoScope\Rules\Config\EnvVarMissingFromExampleRule;
 use TicoScope\Rules\Config\EnvWithoutDefaultRule;
 use TicoScope\Rules\Migration\ColumnDroppedRule;
 use TicoScope\Rules\Migration\ColumnRenamedRule;
@@ -29,6 +30,7 @@ final class TicoScopeServiceProvider extends ServiceProvider
 
         $this->app->singleton(Analyzer::class, fn ($app) => new Analyzer([
             $app->make(EnvWithoutDefaultRule::class),
+            $app->make(EnvVarMissingFromExampleRule::class),
             $app->make(JobFqcnChangedRule::class),
             $app->make(JobClassRemovedRule::class),
             $app->make(JobPropertyRemovedRule::class),

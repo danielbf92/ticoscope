@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 12)
+## Current state (Milestone 13)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,14 +25,29 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Fourteen real analysis rules, closing out VISION.md's entire Queue Job
-  category, its entire Migration rule set, and its Composer rule set:
+- Fifteen real analysis rules, closing out VISION.md's entire Queue Job
+  category, its entire Migration rule set, its Composer rule set, and its
+  Config/env rule set:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
     strongest single feature to build first. It only looks at lines the
     diff actually added, so an existing, untouched `env()` call never
     re-fires just because an unrelated line in the same file changed.
+  - `config.env-missing-from-example` flags a newly-added `env()` call,
+    anywhere in changed application/config PHP code (not just
+    `config/*.php`, deliberately broader than the rule above), whose
+    referenced variable is absent from `.env.example`'s current declared
+    keys. `tests/` is deliberately excluded — test code legitimately
+    references variables that should never appear in `.env.example`, and
+    flagging those would be a false positive. **Known limitation, stated
+    here rather than discovered the hard way:** this rule is diff-scoped,
+    not a full-codebase reconciliation — a key silently removed from
+    `.env.example` while the code that reads it goes untouched elsewhere
+    in the repo is not caught. Catching that would require enumerating and
+    scanning every tracked file at head revision, a materially bigger
+    primitive than a diff of what changed, and a real departure from this
+    project's diff-first architecture, not attempted for v0.1.
   - `queue.job-fqcn-changed` flags a change to a queued Job class's
     fully-qualified class name — a renamed namespace or class, independent
     of whether Git reports the change as a plain edit or a file rename —
@@ -114,7 +129,7 @@ and scope.
     `composer.json`'s constraints, and only compare `Modified` lock files
     — a newly added or fully deleted `composer.lock` has no "before" or
     "after" side to compare against, so neither rule fires on those.
-- `ticoscope:check` runs the real diff and all fourteen rules, prints the
+- `ticoscope:check` runs the real diff and all fifteen rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -131,8 +146,7 @@ and scope.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: the `.env.example` cross-reference half of the
-config/env rule, route rules, CI/GitHub Action integration.
+Not yet implemented: route rules, CI/GitHub Action integration.
 
 ## Installation
 
