@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 7)
+## Current state (Milestone 8)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -66,13 +66,21 @@ and scope.
   info), most severe first.
 - `--fail-on={info|warning|critical}` gates the command's exit code on
   finding severity, so `ticoscope:check` can be used as a real CI check.
+- `--format={console|json}` selects the output format. `console` (the
+  default) is unchanged from before. `json` prints a single, versioned
+  JSON document (`schema_version`, `summary`, `findings`) to stdout — and
+  *only* that document, with no human narration mixed in — for
+  programmatic consumers such as `ticoscope:check --format=json | jq
+  '.findings'`. Every failure path (an invalid option, a Git error) also
+  emits valid JSON under `--format=json`, with the same exit code as
+  console mode; exit-code semantics are otherwise unaffected by `--format`.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
 Not yet implemented: `migration.column-renamed`, a non-nullable-column-
 without-default rule, a column-type-change rule, Composer rules, the
 `.env.example` cross-reference half of the config/env rule, route rules,
-`JsonReporter`, `--format`, CI/GitHub Action integration.
+CI/GitHub Action integration.
 
 ## Installation
 

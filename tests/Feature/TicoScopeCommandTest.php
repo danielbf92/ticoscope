@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Artisan;
 use TicoScope\Analysis\Analyzer;
 use TicoScope\Diff\ChangedFile;
 use TicoScope\Diff\ChangeType;
@@ -264,4 +265,99 @@ it('an unrecognized --fail-on value is invalid', function () {
     $this->artisan('ticoscope:check', ['--base' => 'main', '--fail-on' => 'bogus'])
         ->expectsOutputToContain('Invalid --fail-on value')
         ->assertExitCode(Command::INVALID);
+});
+
+// --format=json — stdout must be exactly one JSON document, nothing else.
+
+it('--format=json with real findings prints only a valid JSON document', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([fakeFinding(Severity::Critical)]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    $exitCode = Artisan::call('ticoscope:check', ['--base' => 'main', '--format' => 'json']);
+    $output = Artisan::output();
+
+    $decoded = json_decode(trim($output), associative: true);
+
+    expect($decoded)->not->toBeNull();
+    expect(trim($output))->toBe(json_encode($decoded, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    expect($decoded['schema_version'])->toBe('1');
+    expect($decoded['summary']['total'])->toBe(1);
+    expect($exitCode)->toBe(Command::SUCCESS);
+});
+
+it('--format=json with zero findings prints valid JSON with an empty findings array', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    Artisan::call('ticoscope:check', ['--base' => 'main', '--format' => 'json']);
+    $decoded = json_decode(trim(Artisan::output()), associative: true);
+
+    expect($decoded['findings'])->toBe([]);
+    expect($decoded['summary'])->toBe(['total' => 0, 'critical' => 0, 'warning' => 0, 'info' => 0]);
+});
+
+it('--format=json against a non-Git-repository target prints the JSON error shape', function () {
+    $directory = sys_get_temp_dir().'/ticoscope-not-a-repo-'.uniqid();
+    mkdir($directory);
+
+    $this->app->instance(GitDiffReader::class, new GitDiffReader($directory));
+
+    $exitCode = Artisan::call('ticoscope:check', ['--base' => 'main', '--format' => 'json']);
+    $decoded = json_decode(trim(Artisan::output()), associative: true);
+
+    expect($decoded['schema_version'])->toBe('1');
+    expect($decoded['error'])->toContain('is not a Git repository');
+    expect($exitCode)->toBe(Command::FAILURE);
+
+    rmdir($directory);
+});
+
+it('--format=json with an invalid --fail-on value prints the JSON error shape', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    $exitCode = Artisan::call('ticoscope:check', ['--base' => 'main', '--format' => 'json', '--fail-on' => 'bogus']);
+    $decoded = json_decode(trim(Artisan::output()), associative: true);
+
+    expect($decoded['schema_version'])->toBe('1');
+    expect($decoded['error'])->toContain('Invalid --fail-on value');
+    expect($exitCode)->toBe(Command::INVALID);
+});
+
+it('an invalid --format value is invalid', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    $this->artisan('ticoscope:check', ['--base' => 'main', '--format' => 'yaml'])
+        ->expectsOutputToContain('Invalid --format value')
+        ->assertExitCode(Command::INVALID);
+});
+
+it('--format=console (explicit) matches the default console output exactly', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([fakeFinding(Severity::Warning)]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    $this->artisan('ticoscope:check', ['--base' => 'main', '--format' => 'console'])
+        ->expectsOutputToContain('WARNING (1)')
+        ->expectsOutputToContain('1 finding (1 warning).')
+        ->assertExitCode(Command::SUCCESS);
+});
+
+it('--format=json combined with --fail-on still gates the exit code correctly', function () {
+    [$gitDiffReader, $analyzer, $keepRepoAlive] = fakeFindingsSetup([fakeFinding(Severity::Warning)]);
+    $this->app->instance(GitDiffReader::class, $gitDiffReader);
+    $this->app->instance(Analyzer::class, $analyzer);
+
+    $exitCode = Artisan::call('ticoscope:check', [
+        '--base' => 'main',
+        '--format' => 'json',
+        '--fail-on' => 'warning',
+    ]);
+
+    expect($exitCode)->toBe(Command::FAILURE);
 });

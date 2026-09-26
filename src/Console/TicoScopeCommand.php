@@ -13,17 +13,32 @@ use TicoScope\Findings\Severity;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Git\GitException;
 use TicoScope\Reporting\ConsoleReporter;
+use TicoScope\Reporting\JsonReporter;
 
 final class TicoScopeCommand extends Command
 {
     protected $signature = 'ticoscope:check
         {--base=main : The revision to compare against}
-        {--fail-on= : Minimum severity (info, warning, or critical — lowercase) that causes a non-zero exit code}';
+        {--fail-on= : Minimum severity (info, warning, or critical — lowercase) that causes a non-zero exit code}
+        {--format=console : Output format (console or json)}';
 
     protected $description = 'Analyze the changes since a base revision for deployment risk';
 
     public function handle(GitDiffReader $gitDiffReader, Analyzer $analyzer): int
     {
+        $formatOption = $this->option('format');
+
+        if ($formatOption !== 'console' && $formatOption !== 'json') {
+            $this->components->error(sprintf(
+                'Invalid --format value "%s". Expected one of: console, json.',
+                $formatOption,
+            ));
+
+            return self::INVALID;
+        }
+
+        $isJson = $formatOption === 'json';
+
         $threshold = null;
         $failOnOption = $this->option('fail-on');
 
@@ -31,10 +46,16 @@ final class TicoScopeCommand extends Command
             $threshold = Severity::tryFrom($failOnOption);
 
             if ($threshold === null) {
-                $this->components->error(sprintf(
+                $message = sprintf(
                     'Invalid --fail-on value "%s". Expected one of: info, warning, critical.',
                     $failOnOption,
-                ));
+                );
+
+                if ($isJson) {
+                    $this->line($this->errorDocument($message));
+                } else {
+                    $this->components->error($message);
+                }
 
                 return self::INVALID;
             }
@@ -43,18 +64,26 @@ final class TicoScopeCommand extends Command
         try {
             $diff = $gitDiffReader->compare($this->option('base'));
         } catch (GitException $exception) {
-            $this->components->error($exception->getMessage());
+            if ($isJson) {
+                $this->line($this->errorDocument($exception->getMessage()));
+            } else {
+                $this->components->error($exception->getMessage());
+            }
 
             return self::FAILURE;
         }
 
-        $this->renderDiffSummary($diff);
-        $this->newLine();
-
         $findings = $analyzer->analyze($diff);
 
-        foreach (explode("\n", (new ConsoleReporter())->report($findings)) as $line) {
-            $this->line($line);
+        if ($isJson) {
+            $this->line((new JsonReporter())->report($findings));
+        } else {
+            $this->renderDiffSummary($diff);
+            $this->newLine();
+
+            foreach (explode("\n", (new ConsoleReporter())->report($findings)) as $line) {
+                $this->line($line);
+            }
         }
 
         if ($threshold !== null && $this->anyFindingMeets($findings, $threshold)) {
@@ -62,6 +91,16 @@ final class TicoScopeCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function errorDocument(string $message): string
+    {
+        $json = json_encode([
+            'schema_version' => '1',
+            'error' => $message,
+        ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return $json === false ? '{"schema_version":"1","error":"unknown error"}' : $json;
     }
 
     /**
