@@ -12,6 +12,8 @@ final readonly class PublicPropertyInfo
     public function __construct(
         public string $name,
         public ?string $type,
+        public bool $hasLiteralDefault = false,
+        public string|int|float|bool|null $literalDefault = null,
     ) {
     }
 }

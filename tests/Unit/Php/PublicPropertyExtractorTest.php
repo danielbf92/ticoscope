@@ -18,6 +18,8 @@ it('extracts a traditional typed property', function () {
 
     expect($properties)->toHaveKey('orderId');
     expect($properties['orderId']->type)->toBe('int');
+    expect($properties['orderId']->hasLiteralDefault)->toBeFalse();
+    expect($properties['orderId']->literalDefault)->toBeNull();
 });
 
 it('extracts an untyped legacy-style property', function () {
@@ -231,4 +233,89 @@ it('returns an empty array, not null, for a class with zero public properties', 
     $properties = (new PublicPropertyExtractor())->extract($source);
 
     expect($properties)->toBe([]);
+});
+
+it('captures a string literal default', function () {
+    $source = <<<'PHP'
+        <?php
+
+        namespace App\Jobs;
+
+        class GenerateReport
+        {
+            public string $connection = 'redis';
+        }
+        PHP;
+
+    $properties = (new PublicPropertyExtractor())->extract($source);
+
+    expect($properties['connection']->hasLiteralDefault)->toBeTrue();
+    expect($properties['connection']->literalDefault)->toBe('redis');
+});
+
+it('captures int, float, bool, and null literal defaults', function () {
+    $source = <<<'PHP'
+        <?php
+
+        namespace App\Jobs;
+
+        class GenerateReport
+        {
+            public int $retries = 3;
+            public float $timeout = 1.5;
+            public bool $flag = true;
+            public ?string $note = null;
+        }
+        PHP;
+
+    $properties = (new PublicPropertyExtractor())->extract($source);
+
+    expect($properties['retries']->literalDefault)->toBe(3);
+    expect($properties['timeout']->literalDefault)->toBe(1.5);
+    expect($properties['flag']->literalDefault)->toBe(true);
+    expect($properties['note']->hasLiteralDefault)->toBeTrue();
+    expect($properties['note']->literalDefault)->toBeNull();
+});
+
+it('does not capture a non-literal default, but still captures the type', function () {
+    $source = <<<'PHP'
+        <?php
+
+        namespace App\Jobs;
+
+        class GenerateReport
+        {
+            public array $tags = ['a', 'b'];
+            public string $endpoint = config('services.endpoint');
+            public object $factory = new stdClass();
+        }
+        PHP;
+
+    $properties = (new PublicPropertyExtractor())->extract($source);
+
+    expect($properties['tags']->hasLiteralDefault)->toBeFalse();
+    expect($properties['tags']->type)->toBe('array');
+    expect($properties['endpoint']->hasLiteralDefault)->toBeFalse();
+    expect($properties['factory']->hasLiteralDefault)->toBeFalse();
+});
+
+it('captures a literal default on a constructor-promoted property', function () {
+    $source = <<<'PHP'
+        <?php
+
+        namespace App\Jobs;
+
+        class GenerateReport
+        {
+            public function __construct(
+                public string $connection = 'redis',
+            ) {
+            }
+        }
+        PHP;
+
+    $properties = (new PublicPropertyExtractor())->extract($source);
+
+    expect($properties['connection']->hasLiteralDefault)->toBeTrue();
+    expect($properties['connection']->literalDefault)->toBe('redis');
 });

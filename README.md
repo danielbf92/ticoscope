@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 6)
+## Current state (Milestone 6 + routing fast-follow)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,7 +25,8 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Five real analysis rules:
+- Seven real analysis rules, closing out VISION.md's entire Queue Job
+  category:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
@@ -46,7 +47,12 @@ and scope.
   - `queue.job-property-retyped` flags a public property whose declared
     type changed — verified directly to throw a real `TypeError` on
     unserialize when the queued value doesn't match the new type.
-- `ticoscope:check` runs the real diff and all five rules, prints the
+  - `queue.job-connection-changed` / `queue.job-queue-changed` flag the Job
+    class's own declared `$connection`/`$queue` literal changing — an
+    operational routing risk (dispatched jobs going to an unmonitored
+    connection/queue), not a crash, so kept at the same `Warning` severity
+    for a different reason than the identity/property rules above.
+- `ticoscope:check` runs the real diff and all seven rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -56,10 +62,8 @@ and scope.
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
 Not yet implemented: migration rules, Composer rules, the `.env.example`
-cross-reference half of the config/env rule, the queue routing checks
-(`$connection`/`$queue` changes — deferred until the property-compatibility
-extractor above is confirmed to hold up in practice), route rules,
-`JsonReporter`, `--format`, CI/GitHub Action integration.
+cross-reference half of the config/env rule, route rules, `JsonReporter`,
+`--format`, CI/GitHub Action integration.
 
 ## Installation
 

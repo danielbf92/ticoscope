@@ -19,6 +19,16 @@ use Throwable;
  * (`public int $a, $b;`) is captured — rare and discouraged in modern PHP,
  * matching the same "first wins" posture FqcnExtractor takes for multiple
  * class declarations in one file.
+ *
+ * Literal default detection (parseLiteralDefault()) has two confirmed,
+ * accepted gaps: unusual integer notations (hex/octal/binary/underscore-
+ * separated) decode via a plain (int) cast, not PHP's full numeric-literal
+ * grammar; and a negative literal (`= -5`) tokenizes as two tokens (`-`
+ * then the digits), not one, so it reads as "no literal default" rather
+ * than as -5. Both are safe failure modes, not wrong answers — a real
+ * literal is treated as absent, and every rule using this already skips
+ * rather than guesses on a non-literal side — and both are moot for
+ * $connection/$queue specifically, which are never numeric in practice.
  */
 final class PublicPropertyExtractor
 {
@@ -148,7 +158,7 @@ final class PublicPropertyExtractor
                 continue;
             }
 
-            [$name, $type, $statementEnd] = $this->parsePropertyDeclaration($tokens, $next);
+            [$name, $type, $hasLiteralDefault, $literalDefault, $statementEnd] = $this->parsePropertyDeclaration($tokens, $next);
 
             if ($name === null) {
                 break;
@@ -158,7 +168,7 @@ final class PublicPropertyExtractor
             $isStatic = in_array(T_STATIC, $modifiers, true);
 
             if ($isPublic && ! $isStatic) {
-                $properties[$name] = new PublicPropertyInfo($name, $type);
+                $properties[$name] = new PublicPropertyInfo($name, $type, $hasLiteralDefault, $literalDefault);
             }
 
             $i = $statementEnd;
@@ -192,10 +202,12 @@ final class PublicPropertyExtractor
 
     /**
      * Reads a property declaration starting right after its modifiers:
-     * an optional type expression, then a T_VARIABLE, then ';' (skipping
-     * over any '= <default>' — its value is irrelevant to this milestone).
+     * an optional type expression, then a T_VARIABLE, then ';' — optionally
+     * preceded by '= <default>', whose value is captured only when it
+     * reduces to a single literal token (see parseLiteralDefault()).
      *
-     * @return array{0: ?string, 1: ?string, 2: int} [name, type, indexAfterStatement]
+     * @return array{0: ?string, 1: ?string, 2: bool, 3: string|int|float|bool|null, 4: int}
+     *     [name, type, hasLiteralDefault, literalDefault, indexAfterStatement]
      */
     private function parsePropertyDeclaration(array $tokens, int $start): array
     {
@@ -209,7 +221,7 @@ final class PublicPropertyExtractor
                 // method shape (shouldn't normally happen here, since the
                 // T_FUNCTION case is handled before this is called) —
                 // fail conservatively rather than mis-scan further.
-                return [null, null, $count];
+                return [null, null, false, null, $count];
             }
 
             if (! (is_array($tokens[$i]) && $tokens[$i][0] === T_WHITESPACE)) {
@@ -220,7 +232,7 @@ final class PublicPropertyExtractor
         }
 
         if ($i >= $count) {
-            return [null, null, $count];
+            return [null, null, false, null, $count];
         }
 
         $name = ltrim($tokens[$i][1], '$');
@@ -228,8 +240,11 @@ final class PublicPropertyExtractor
 
         $semicolon = $this->findNextChar($tokens, $i + 1, ';');
         $end = $semicolon === null ? $count : $semicolon + 1;
+        $defaultRangeEnd = $semicolon ?? $count;
 
-        return [$name, $type, $end];
+        [$hasLiteralDefault, $literalDefault] = $this->parseLiteralDefault($tokens, $i + 1, $defaultRangeEnd);
+
+        return [$name, $type, $hasLiteralDefault, $literalDefault, $end];
     }
 
     /**
@@ -277,10 +292,65 @@ final class PublicPropertyExtractor
             $name = ltrim($paramTokens[$i][1], '$');
             $type = $typeTokens === [] ? null : implode('', $typeTokens);
 
-            $properties[] = new PublicPropertyInfo($name, $type);
+            [$hasLiteralDefault, $literalDefault] = $this->parseLiteralDefault($paramTokens, $i + 1, $count);
+
+            $properties[] = new PublicPropertyInfo($name, $type, $hasLiteralDefault, $literalDefault);
         }
 
         return $properties;
+    }
+
+    /**
+     * Reads tokens[start, end) — after whitespace/comments are stripped —
+     * looking for exactly '=' followed by a single literal token: a plain
+     * string, integer, float, or the bare keywords true/false/null
+     * (case-insensitive). Anything else (no '=' at all, or more than one
+     * token after it — an expression, a call, an array, a negative number's
+     * '-' plus its digits) is "no literal default," never evaluated.
+     *
+     * @return array{0: bool, 1: string|int|float|bool|null}
+     */
+    private function parseLiteralDefault(array $tokens, int $start, int $end): array
+    {
+        $significant = [];
+
+        for ($i = $start; $i < $end; $i++) {
+            if (is_array($tokens[$i]) && in_array($tokens[$i][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            $significant[] = $tokens[$i];
+        }
+
+        if ($significant === []) {
+            return [false, null];
+        }
+
+        $first = $significant[0];
+        $firstText = is_array($first) ? $first[1] : $first;
+
+        if ($firstText !== '=' || count($significant) !== 2) {
+            return [false, null];
+        }
+
+        $token = $significant[1];
+
+        if (! is_array($token)) {
+            return [false, null];
+        }
+
+        return match ($token[0]) {
+            T_CONSTANT_ENCAPSED_STRING => [true, substr($token[1], 1, -1)],
+            T_LNUMBER => [true, (int) $token[1]],
+            T_DNUMBER => [true, (float) $token[1]],
+            T_STRING => match (strtolower($token[1])) {
+                'true' => [true, true],
+                'false' => [true, false],
+                'null' => [true, null],
+                default => [false, null],
+            },
+            default => [false, null],
+        };
     }
 
     /**

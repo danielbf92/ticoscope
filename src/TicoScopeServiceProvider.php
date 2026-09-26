@@ -8,9 +8,11 @@ use TicoScope\Console\TicoScopeCommand;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Rules\Config\EnvWithoutDefaultRule;
 use TicoScope\Rules\Queue\JobClassRemovedRule;
+use TicoScope\Rules\Queue\JobConnectionChangedRule;
 use TicoScope\Rules\Queue\JobFqcnChangedRule;
 use TicoScope\Rules\Queue\JobPropertyRemovedRule;
 use TicoScope\Rules\Queue\JobPropertyRetypedRule;
+use TicoScope\Rules\Queue\JobQueueChangedRule;
 
 final class TicoScopeServiceProvider extends ServiceProvider
 {
@@ -24,6 +26,8 @@ final class TicoScopeServiceProvider extends ServiceProvider
             $app->make(JobClassRemovedRule::class),
             $app->make(JobPropertyRemovedRule::class),
             $app->make(JobPropertyRetypedRule::class),
+            $app->make(JobConnectionChangedRule::class),
+            $app->make(JobQueueChangedRule::class),
         ]));
     }
 
