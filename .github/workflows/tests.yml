@@ -36,10 +36,25 @@ jobs:
           composer require "orchestra/testbench:${{ matrix.testbench }}" --no-update --dev
 
       - name: Install dependencies
-        run: composer update --prefer-dist --no-interaction
+        run: |
+          # Laravel 11.x has no patched release for CVE-2026-48019 (CRLF
+          # injection in the default email validation rule, GHSA-5vg9-
+          # 5847-vvmq) — the fix ships only in 12.60.0+/13.10.0+. This
+          # matrix leg installs Laravel 11 solely to test TicoScope's own
+          # compatibility with that framework version, so --no-blocking
+          # (a command-scoped flag, never written to composer.json) is
+          # applied ONLY when matrix.laravel == '11.*' below — never a
+          # blanket override, and never part of the published package's
+          # own composer.json/security policy. `composer audit` (below)
+          # keeps the advisory visible regardless.
+          composer update --prefer-dist --no-interaction ${{ matrix.laravel == '11.*' && '--no-blocking' || '' }}
 
       - name: composer validate
         run: composer validate --strict
+
+      - name: composer audit (non-blocking, informational)
+        continue-on-error: true
+        run: composer audit
 
       - name: Run tests
         run: vendor/bin/pest
@@ -58,10 +73,25 @@ jobs:
           coverage: none
 
       - name: Install dependencies (lowest supported versions)
-        run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-interaction
+        run: |
+          # --prefer-lowest resolves toward composer.json's declared floor
+          # (Laravel 11.0.0), which is exactly what this job exists to
+          # test. Laravel 11.x has no patched release for CVE-2026-48019
+          # (CRLF injection in the default email validation rule, GHSA-
+          # 5vg9-5847-vvmq — fix ships only in 12.60.0+/13.10.0+): without
+          # --no-blocking, Composer's advisory-aware solver excludes the
+          # entire 11.x line and silently resolves this job to Laravel 12
+          # instead, defeating its actual purpose rather than merely
+          # failing loudly. `composer audit` (below) keeps the advisory
+          # visible regardless.
+          composer update --prefer-lowest --prefer-stable --prefer-dist --no-interaction --no-blocking
 
       - name: composer validate
         run: composer validate --strict
+
+      - name: composer audit (non-blocking, informational)
+        continue-on-error: true
+        run: composer audit
 
       - name: Run tests
         run: vendor/bin/pest
