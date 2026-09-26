@@ -1,0 +1,67 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    name: PHP ${{ matrix.php }} / Laravel ${{ matrix.laravel }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+        laravel: ['11.*', '12.*']
+        include:
+          - laravel: '11.*'
+            testbench: '9.*'
+          - laravel: '12.*'
+            testbench: '10.*'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+
+      - name: Select Laravel/Testbench versions
+        run: |
+          composer require "illuminate/console:${{ matrix.laravel }}" "illuminate/support:${{ matrix.laravel }}" --no-update
+          composer require "orchestra/testbench:${{ matrix.testbench }}" --no-update --dev
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-interaction
+
+      - name: composer validate
+        run: composer validate --strict
+
+      - name: Run tests
+        run: vendor/bin/pest
+
+  prefer-lowest:
+    name: PHP 8.2 / Laravel (prefer-lowest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          coverage: none
+
+      - name: Install dependencies (lowest supported versions)
+        run: composer update --prefer-lowest --prefer-stable --prefer-dist --no-interaction
+
+      - name: composer validate
+        run: composer validate --strict
+
+      - name: Run tests
+        run: vendor/bin/pest

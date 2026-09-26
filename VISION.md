@@ -1,6 +1,6 @@
 # VISION.md — TicoScope
 
-Status: v0.1 vision; implementation in progress (see README.md's "Current state" for what's built so far).
+Status: v0.1 vision; implementation complete, repository ready for a v0.1.0 tag (see README.md's "Current state" for what's built).
 Purpose of this document: define the problem, scope, and architecture guiding ongoing implementation.
 
 ## 1. Problem We're Solving
@@ -88,7 +88,7 @@ TicoScope — comparing main...HEAD (14 files changed)
 
 CRITICAL (1)
   ✗ database/migrations/2026_09_12_add_status_to_orders.php
-    [migration.drop-column] Migration drops column "legacy_reference" on table "orders".
+    [migration.column-dropped] Migration drops column "legacy_reference" on table "orders".
     This is a destructive, typically irreversible operation. Confirm a backup/rollback plan exists.
 
 WARNING (2)
@@ -101,7 +101,7 @@ WARNING (2)
 
 INFO (1)
   · composer.lock
-    [composer.major-bump] "guzzlehttp/guzzle" bumped 6.x → 7.x.
+    [composer.package-major-bump] "guzzlehttp/guzzle" bumped 6.x → 7.x.
 
 4 findings (1 critical, 2 warning, 1 info).
 ```
@@ -161,7 +161,7 @@ Referenced in the critique above; worth keeping linked here as the project's own
 
 ## 13. Open Questions Before Writing Code
 
-- **Partially settled:** rule identifiers for the three rules implemented so far (`config.env-without-default`, `queue.job-fqcn-changed`, `queue.job-class-removed`) are fixed and tested — changing them now is the breaking change this bullet warned about. JSON schema field names remain genuinely open, since `JsonReporter` doesn't exist yet.
+- **Settled (v0.1 complete):** all 15 shipped rule identifiers are fixed and tested — renaming one now is the breaking change this bullet warned about. `JsonReporter`'s JSON schema field names (`schema_version`, `summary`, `findings`, `rule_id`, `severity`, `file`, `message`, `reason_code`) are likewise frozen as of `schema_version: "1"` — see README.md's "JSON output & compatibility" section for the stated policy.
 - **Settled (Milestone 2):** renamed-file detection relies on Git's own rename detection (`git diff -M`), not manual reconstruction — `ChangedFile::$originalPath` is populated directly from Git's raw rename records. See `TicoScope\Git\GitDiffReader`.
 - **Settled (Milestone 2):** revision comparison is merge-base relative (`git diff base...head`, Git's "three-dot" semantics), not a literal two-tree diff. This matters because a base branch that has moved forward since the head revision branched off must not leak unrelated, already-merged changes into the report — the tool's premise is "what does this release introduce," not "what differs between these two trees right now." See `TicoScope\Git\GitDiffReader`.
 - The precise definition of "risky" for route-middleware changes (flagged as underspecified in §4) needs to be written as a concrete rule spec before it's added to scope, not left as a vague bullet.

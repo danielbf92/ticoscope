@@ -1,8 +1,9 @@
 {
     "name": "ticoscope/laravel",
-    "description": "A diff-based, Laravel-aware pre-deployment risk report. Experimental, pre-v0.1.",
+    "description": "A diff-based, Laravel-aware pre-deployment risk report for CI.",
     "type": "library",
     "license": "MIT",
+    "homepage": "https://github.com/danielbf92/ticoscope",
     "keywords": [
         "laravel",
         "release",
@@ -16,6 +17,10 @@
             "email": "danielbrenesfz@gmail.com"
         }
     ],
+    "support": {
+        "issues": "https://github.com/danielbf92/ticoscope/issues",
+        "source": "https://github.com/danielbf92/ticoscope"
+    },
     "require": {
         "php": "^8.2",
         "illuminate/console": "^11.0 || ^12.0",
