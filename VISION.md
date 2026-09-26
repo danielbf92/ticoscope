@@ -1,7 +1,7 @@
 # VISION.md — TicoScope
 
-Status: draft v0.1 vision, not yet implemented.
-Purpose of this document: define the problem, scope, and architecture before any package code is written.
+Status: v0.1 vision; implementation in progress (see README.md's "Current state" for what's built so far).
+Purpose of this document: define the problem, scope, and architecture guiding ongoing implementation.
 
 ## 1. Problem We're Solving
 

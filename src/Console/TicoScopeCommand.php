@@ -9,17 +9,37 @@ use TicoScope\Diff\ChangedFile;
 use TicoScope\Diff\ChangeType;
 use TicoScope\Diff\Diff;
 use TicoScope\Findings\Finding;
+use TicoScope\Findings\Severity;
 use TicoScope\Git\GitDiffReader;
 use TicoScope\Git\GitException;
+use TicoScope\Reporting\ConsoleReporter;
 
 final class TicoScopeCommand extends Command
 {
-    protected $signature = 'ticoscope:check {--base=main : The revision to compare against}';
+    protected $signature = 'ticoscope:check
+        {--base=main : The revision to compare against}
+        {--fail-on= : Minimum severity (info, warning, or critical — lowercase) that causes a non-zero exit code}';
 
     protected $description = 'Analyze the changes since a base revision for deployment risk';
 
     public function handle(GitDiffReader $gitDiffReader, Analyzer $analyzer): int
     {
+        $threshold = null;
+        $failOnOption = $this->option('fail-on');
+
+        if ($failOnOption !== null) {
+            $threshold = Severity::tryFrom($failOnOption);
+
+            if ($threshold === null) {
+                $this->components->error(sprintf(
+                    'Invalid --fail-on value "%s". Expected one of: info, warning, critical.',
+                    $failOnOption,
+                ));
+
+                return self::INVALID;
+            }
+        }
+
         try {
             $diff = $gitDiffReader->compare($this->option('base'));
         } catch (GitException $exception) {
@@ -30,9 +50,32 @@ final class TicoScopeCommand extends Command
 
         $this->renderDiffSummary($diff);
         $this->newLine();
-        $this->renderFindings($analyzer->analyze($diff));
+
+        $findings = $analyzer->analyze($diff);
+
+        foreach (explode("\n", (new ConsoleReporter())->report($findings)) as $line) {
+            $this->line($line);
+        }
+
+        if ($threshold !== null && $this->anyFindingMeets($findings, $threshold)) {
+            return self::FAILURE;
+        }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param Finding[] $findings
+     */
+    private function anyFindingMeets(array $findings, Severity $threshold): bool
+    {
+        foreach ($findings as $finding) {
+            if ($finding->severity->meets($threshold)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function renderDiffSummary(Diff $diff): void
@@ -56,30 +99,6 @@ final class TicoScopeCommand extends Command
                 $this->describe($changedFile),
                 $classifier->classify($changedFile)->value,
             ));
-        }
-    }
-
-    /**
-     * @param Finding[] $findings
-     */
-    private function renderFindings(array $findings): void
-    {
-        if ($findings === []) {
-            $this->line('No findings.');
-
-            return;
-        }
-
-        $this->line(sprintf('Findings (%d)', count($findings)));
-
-        foreach ($findings as $finding) {
-            $this->line(sprintf(
-                '  %-8s [%s] %s',
-                strtoupper($finding->severity->value),
-                $finding->ruleId,
-                $finding->file->path,
-            ));
-            $this->line(sprintf('    %s', $finding->message));
         }
     }
 

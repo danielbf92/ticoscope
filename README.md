@@ -14,32 +14,44 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 3)
+## Current state (Milestone 5)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
 - A real Git diff engine (`GitDiffReader`): merge-base-relative comparison
-  between a base and head revision, with rename detection and per-file patch
-  capture.
+  between a base and head revision, with rename detection, per-file patch
+  capture, and reading a file's content at an arbitrary revision.
 - Laravel-aware file classification (`FileClassifier`): migrations, config
   files, routes, queued Jobs, `.env.example`, and Composer files are
-  recognized by path.
-- The first real analysis rule: `config.env-without-default` flags a newly
-  introduced `env()` call in a config file with no usable fallback (including
-  an explicit `null` fallback) — the `config:cache` hazard VISION.md calls out
-  as the strongest single feature to build first. It only looks at lines the
-  diff actually added, so an existing, untouched `env()` call never re-fires
-  just because an unrelated line in the same file changed.
-- `ticoscope:check` runs the real diff and the real rule, and prints the
-  changed-file list (with classification) and any findings. This is still a
-  minimal, temporary output format — not the final severity-grouped
-  `ConsoleReporter` from VISION.md's scope.
+  recognized by path, either by a file's current path or (for rules that
+  need it) its pre-change path.
+- Three real analysis rules:
+  - `config.env-without-default` flags a newly introduced `env()` call in a
+    config file with no usable fallback (including an explicit `null`
+    fallback) — the `config:cache` hazard VISION.md calls out as the
+    strongest single feature to build first. It only looks at lines the
+    diff actually added, so an existing, untouched `env()` call never
+    re-fires just because an unrelated line in the same file changed.
+  - `queue.job-fqcn-changed` flags a change to a queued Job class's
+    fully-qualified class name — a renamed namespace or class, independent
+    of whether Git reports the change as a plain edit or a file rename —
+    since already-queued jobs referencing the old name may fail to
+    deserialize after deploy.
+  - `queue.job-class-removed` flags a queued Job class being deleted
+    outright, for the same reason.
+- `ticoscope:check` runs the real diff and all three rules, prints the
+  changed-file list (with classification), and renders findings through a
+  real `ConsoleReporter` — grouped by severity (critical, then warning, then
+  info), most severe first.
+- `--fail-on={info|warning|critical}` gates the command's exit code on
+  finding severity, so `ticoscope:check` can be used as a real CI check.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: migration/queue/composer rules, the `.env.example`
-cross-reference half of the config/env rule, `ConsoleReporter`/`JsonReporter`,
-`--fail-on` severity gating.
+Not yet implemented: migration rules, Composer rules, the `.env.example`
+cross-reference half of the config/env rule, remaining queued-Job checks
+(property removal/retyping, `$connection`/`$queue` changes), route rules,
+`JsonReporter`, `--format`, CI/GitHub Action integration.
 
 ## Installation
 
@@ -53,25 +65,30 @@ reference until a first tagged release exists.
 ## Usage
 
 ```bash
-php artisan ticoscope:check --base=main
+php artisan ticoscope:check --base=main --fail-on=warning
 ```
 
 ```
 TicoScope
 Comparing main → feature
 
-3 files changed
+2 files changed
 
-ADDED     app/Jobs/SyncInventory.php [queue-job]
-RENAMED   app/Old.php → app/Renamed.php [unclassified]
+MODIFIED  app/Jobs/GenerateReport.php [queue-job]
 MODIFIED  config/services.php [config]
 
-Findings (1)
-  WARNING  [config.env-without-default] config/services.php
-    New env() call for REPORTING_ENDPOINT has no fallback. If the variable is
-    missing when configuration is cached, this config value may resolve to
-    null.
+WARNING (2)
+  ! config/services.php
+    [config.env-without-default] New env() call for REPORTING_ENDPOINT has no fallback. If the variable is missing when configuration is cached, this config value may resolve to null.
+  ! app/Jobs/GenerateReport.php
+    [queue.job-fqcn-changed] Job class identity changed from App\Jobs\GenerateReport to App\Jobs\Reporting\GenerateReport. Jobs queued under the previous class name may no longer deserialize or resolve correctly after deployment.
+2 findings (2 warning).
 ```
+
+`--fail-on` is optional and lowercase-only (`info`, `warning`, or
+`critical`). Omit it to always exit successfully regardless of findings;
+set it to gate CI on a minimum severity — the command exits non-zero as
+soon as any finding meets or exceeds that threshold.
 
 ## Testing
 
