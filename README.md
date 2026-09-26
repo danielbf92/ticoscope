@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 6 + routing fast-follow)
+## Current state (Milestone 7)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,8 +25,8 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Seven real analysis rules, closing out VISION.md's entire Queue Job
-  category:
+- Nine real analysis rules, closing out VISION.md's entire Queue Job
+  category and starting on Migration rules:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
@@ -52,7 +52,15 @@ and scope.
     operational routing risk (dispatched jobs going to an unmonitored
     connection/queue), not a crash, so kept at the same `Warning` severity
     for a different reason than the identity/property rules above.
-- `ticoscope:check` runs the real diff and all seven rules, prints the
+  - `migration.column-dropped` / `migration.table-dropped` flag a migration
+    dropping a column or table outright — destructive, typically
+    irreversible operations, and the first `Critical`-severity findings in
+    the project. Correctly tracks the actual Blueprint variable through a
+    migration's `Schema::table()`/`Schema::create()` closure (any parameter
+    name, typed or not), including nested closures — verified to never
+    misattribute a same-named variable shadowed by an inner closure to the
+    outer schema builder.
+- `ticoscope:check` runs the real diff and all nine rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -61,9 +69,10 @@ and scope.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: migration rules, Composer rules, the `.env.example`
-cross-reference half of the config/env rule, route rules, `JsonReporter`,
-`--format`, CI/GitHub Action integration.
+Not yet implemented: `migration.column-renamed`, a non-nullable-column-
+without-default rule, a column-type-change rule, Composer rules, the
+`.env.example` cross-reference half of the config/env rule, route rules,
+`JsonReporter`, `--format`, CI/GitHub Action integration.
 
 ## Installation
 
