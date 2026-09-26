@@ -170,7 +170,7 @@ final class SchemaCallExtractor
             $bodyEnd = $closure['isArrow'] ? $parenClose : $closure['bodyEnd'];
             $statements = $this->scanForCalls($tokens, $closure['bodyStart'], $bodyEnd, $blueprintVar);
 
-            $operations[] = new SchemaTableOperation($tableName, $statements);
+            $operations[] = new SchemaTableOperation($tableName, $statements, $tokens[$method][1] === 'create');
         }
 
         return $operations;

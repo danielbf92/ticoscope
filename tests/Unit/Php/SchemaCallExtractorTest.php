@@ -125,6 +125,34 @@ it('scopes multiple Schema::table()/create() calls in one file independently', f
     expect($analysis->tableOperations[1]->table)->toBe('customers');
 });
 
+it('marks a Schema::table() operation as not a new table', function () {
+    $source = <<<'PHP'
+        <?php
+
+        Schema::table('orders', function (Blueprint $table) {
+            $table->dropColumn('legacy_reference');
+        });
+        PHP;
+
+    $analysis = (new SchemaCallExtractor())->extract($source);
+
+    expect($analysis->tableOperations[0]->isNewTable)->toBeFalse();
+});
+
+it('marks a Schema::create() operation as a new table', function () {
+    $source = <<<'PHP'
+        <?php
+
+        Schema::create('customers', function (Blueprint $table) {
+            $table->id();
+        });
+        PHP;
+
+    $analysis = (new SchemaCallExtractor())->extract($source);
+
+    expect($analysis->tableOperations[0]->isNewTable)->toBeTrue();
+});
+
 it('resolves an array-argument dropColumn(["a", "b"]) to both names', function () {
     $source = <<<'PHP'
         <?php

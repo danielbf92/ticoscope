@@ -17,10 +17,15 @@ final readonly class SchemaTableOperation
      *     isn't a literal (a variable, a call — never guessed), or a
      *     nested list of the same for an array-literal argument (e.g.
      *     `dropColumn(['a', 'b'])`).
+     * @param bool $isNewTable True for Schema::create(), false for
+     *     Schema::table() — a table just being created has no existing
+     *     rows, which matters to rules that only care about altering an
+     *     already-populated table.
      */
     public function __construct(
         public string $table,
         public array $statements,
+        public bool $isNewTable,
     ) {
     }
 }

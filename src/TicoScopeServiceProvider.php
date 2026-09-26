@@ -9,6 +9,7 @@ use TicoScope\Git\GitDiffReader;
 use TicoScope\Rules\Config\EnvWithoutDefaultRule;
 use TicoScope\Rules\Migration\ColumnDroppedRule;
 use TicoScope\Rules\Migration\ColumnRenamedRule;
+use TicoScope\Rules\Migration\NonNullableWithoutDefaultRule;
 use TicoScope\Rules\Migration\TableDroppedRule;
 use TicoScope\Rules\Queue\JobClassRemovedRule;
 use TicoScope\Rules\Queue\JobConnectionChangedRule;
@@ -34,6 +35,7 @@ final class TicoScopeServiceProvider extends ServiceProvider
             $app->make(ColumnDroppedRule::class),
             $app->make(TableDroppedRule::class),
             $app->make(ColumnRenamedRule::class),
+            $app->make(NonNullableWithoutDefaultRule::class),
         ]));
     }
 

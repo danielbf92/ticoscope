@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 9)
+## Current state (Milestone 10)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,7 +25,7 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Ten real analysis rules, closing out VISION.md's entire Queue Job
+- Eleven real analysis rules, closing out VISION.md's entire Queue Job
   category and continuing the Migration fast-follow:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
@@ -67,7 +67,18 @@ and scope.
     `Warning` severity, the same class of risk as the Queue identity-change
     rules. Reuses the same Blueprint-tracking extractor as the drop rules,
     with no extractor changes needed.
-- `ticoscope:check` runs the real diff and all ten rules, prints the
+  - `migration.non-nullable-without-default` flags a column added to an
+    *existing* table (`Schema::table()`, never `Schema::create()` — a brand
+    new table has no rows yet) with no `->nullable()` and no `->default()`
+    in its chain. Only actually harmful if the table already has rows,
+    which static analysis can't know, so it's `Warning`, not `Critical`.
+    The candidate column-type allowlist and the methods excluded from it
+    (`timestamps()`, `softDeletes()`, `rememberToken()`, `id()`, and the
+    `morphs()` family) were verified directly against the real
+    `Illuminate\Database\Schema\Blueprint` source rather than assumed —
+    several of those are already nullable, or already carry an effective
+    default, internally.
+- `ticoscope:check` runs the real diff and all eleven rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -84,9 +95,9 @@ and scope.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: a non-nullable-column-without-default rule, a
-column-type-change rule, Composer rules, the `.env.example` cross-reference
-half of the config/env rule, route rules, CI/GitHub Action integration.
+Not yet implemented: a column-type-change rule, Composer rules, the
+`.env.example` cross-reference half of the config/env rule, route rules,
+CI/GitHub Action integration.
 
 ## Installation
 
