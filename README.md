@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 5)
+## Current state (Milestone 6)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,7 +25,7 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Three real analysis rules:
+- Five real analysis rules:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
@@ -39,7 +39,14 @@ and scope.
     deserialize after deploy.
   - `queue.job-class-removed` flags a queued Job class being deleted
     outright, for the same reason.
-- `ticoscope:check` runs the real diff and all three rules, prints the
+  - `queue.job-property-removed` flags a public property (declared
+    traditionally or via constructor promotion) removed from a Job class —
+    an already-queued payload unserializes it back as an undeclared dynamic
+    property, deprecated since PHP 8.2.
+  - `queue.job-property-retyped` flags a public property whose declared
+    type changed — verified directly to throw a real `TypeError` on
+    unserialize when the queued value doesn't match the new type.
+- `ticoscope:check` runs the real diff and all five rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -49,8 +56,9 @@ and scope.
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
 Not yet implemented: migration rules, Composer rules, the `.env.example`
-cross-reference half of the config/env rule, remaining queued-Job checks
-(property removal/retyping, `$connection`/`$queue` changes), route rules,
+cross-reference half of the config/env rule, the queue routing checks
+(`$connection`/`$queue` changes — deferred until the property-compatibility
+extractor above is confirmed to hold up in practice), route rules,
 `JsonReporter`, `--format`, CI/GitHub Action integration.
 
 ## Installation

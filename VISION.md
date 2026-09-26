@@ -43,7 +43,7 @@ There's also a real, proven architectural precedent worth citing rather than ign
 ## 5. v0.1 Scope
 
 - Compute the changed-file set between a base revision (default `main`, overridable) and the current working tree/branch using Git, producing a typed `ChangedFile` for each entry (path, change type: added/modified/deleted/renamed, raw diff hunk).
-- Classify each `ChangedFile` into a Laravel-relevant category: migration, config file, route file, queued Job class, `.env.example`, `composer.json`/`composer.lock`, or "unclassified" (still reported, lowest severity, for completeness).
+- Classify each `ChangedFile` into a Laravel-relevant category: migration, config file, route file, queued Job class, `.env.example`, `composer.json`/`composer.lock`, or "unclassified" (still reported, lowest severity, for completeness). **Settled (Milestone 3):** "still reported... for completeness" is implemented as command-output visibility — every changed file's category is shown in the console's changed-file list — not as a synthetic Info-severity `Finding` per unclassified file. `Finding`s stay rule-driven; classification-as-visibility and classification-as-a-risk-signal are kept as separate concerns. See `TicoScope\Classification\FileClassifier`.
 - Migration rules: flag new/modified migration files performing operations with known production risk — dropping a column or table, renaming a column, adding a non-nullable column without a default, changing a column type in a way that can truncate data — each flagged with the specific reason, not just "this migration changed."
 - Config/env rules: flag new config keys that call `env()` (a `config:cache` hazard), and flag environment variables referenced in application/config code that are missing from `.env.example`.
 - Queue Job rules (narrowed per the critique above): flag renamed/moved Job classes, removed or retyped public properties on Job classes, and changed queue connection/driver assignments — each with an explanation of the already-queued-job risk, not a blanket "restart your workers" message.
@@ -96,14 +96,14 @@ WARNING (2)
     [config.env-without-default] New config key "services.reporting.endpoint" calls env()
     with no fallback. If REPORTING_ENDPOINT is unset in production, config:cache will bake in null.
   ! app/Jobs/SyncInventory.php
-    [job.class-renamed] Job class renamed from SyncStock to SyncInventory.
-    Any already-queued jobs referencing SyncStock will fail to unserialize after deploy.
+    [queue.job-fqcn-changed] Job class identity changed from App\Jobs\SyncStock to App\Jobs\SyncInventory.
+    Jobs queued under the previous class name may no longer deserialize or resolve correctly after deployment.
 
 INFO (1)
   · composer.lock
     [composer.major-bump] "guzzlehttp/guzzle" bumped 6.x → 7.x.
 
-3 findings (1 critical, 2 warning, 1 info). Failing build: --fail-on=warning was set.
+4 findings (1 critical, 2 warning, 1 info).
 ```
 
 Machine-readable output for CI:
@@ -161,7 +161,7 @@ Referenced in the critique above; worth keeping linked here as the project's own
 
 ## 13. Open Questions Before Writing Code
 
-- Exact rule identifiers and JSON schema field names should be settled and written down before the first `Rule` is implemented, since changing them later is a breaking change per the versioning policy in §10.
+- **Partially settled:** rule identifiers for the three rules implemented so far (`config.env-without-default`, `queue.job-fqcn-changed`, `queue.job-class-removed`) are fixed and tested — changing them now is the breaking change this bullet warned about. JSON schema field names remain genuinely open, since `JsonReporter` doesn't exist yet.
 - **Settled (Milestone 2):** renamed-file detection relies on Git's own rename detection (`git diff -M`), not manual reconstruction — `ChangedFile::$originalPath` is populated directly from Git's raw rename records. See `TicoScope\Git\GitDiffReader`.
 - **Settled (Milestone 2):** revision comparison is merge-base relative (`git diff base...head`, Git's "three-dot" semantics), not a literal two-tree diff. This matters because a base branch that has moved forward since the head revision branched off must not leak unrelated, already-merged changes into the report — the tool's premise is "what does this release introduce," not "what differs between these two trees right now." See `TicoScope\Git\GitDiffReader`.
 - The precise definition of "risky" for route-middleware changes (flagged as underspecified in §4) needs to be written as a concrete rule spec before it's added to scope, not left as a vague bullet.
