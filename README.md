@@ -14,7 +14,7 @@ migrations, config/env footguns, breaking queued-job changes, and more —
 before you deploy. See [VISION.md](VISION.md) for the full problem statement
 and scope.
 
-## Current state (Milestone 11)
+## Current state (Milestone 12)
 
 - A Composer-installable Laravel package, with a service provider and
   auto-discovery.
@@ -25,8 +25,8 @@ and scope.
   files, routes, queued Jobs, `.env.example`, and Composer files are
   recognized by path, either by a file's current path or (for rules that
   need it) its pre-change path.
-- Twelve real analysis rules, closing out VISION.md's entire Queue Job
-  category and its entire Migration rule set:
+- Fourteen real analysis rules, closing out VISION.md's entire Queue Job
+  category, its entire Migration rule set, and its Composer rule set:
   - `config.env-without-default` flags a newly introduced `env()` call in a
     config file with no usable fallback (including an explicit `null`
     fallback) — the `config:cache` hazard VISION.md calls out as the
@@ -94,7 +94,27 @@ and scope.
     both false positives (a harmless widening `->change()`) and false
     negatives (a risky change expressed via raw SQL instead of the
     Blueprint fluent API).
-- `ticoscope:check` runs the real diff and all twelve rules, prints the
+  - `composer.package-major-bump` flags a dependency whose *resolved*
+    version in `composer.lock` changed major version — direction-agnostic
+    (a downgrade is just as much a signal as a bump). This is the first
+    `Info`-severity rule in the project: a major version change might
+    introduce a breaking change worth a look, but frequently doesn't for
+    a given consumer's actual usage, a real step down from every other
+    rule's concrete, specific operational risk. Known limitation, stated
+    here rather than discovered the hard way: only the leading version
+    component is compared, so a `0.x` release's minor-version breaking
+    changes (semver gives no stability guarantee below `1.0.0`) are not
+    flagged — a deliberate v0.1 simplification, not an oversight.
+  - `composer.package-removed` flags a dependency present in the old
+    `composer.lock` and entirely absent from the new one — `Warning`
+    severity, one step above the major-bump rule, since a removed
+    dependency is a certainty (a class-not-found failure at runtime for
+    any code still referencing it), not merely a possibility. Both
+    Composer rules read only `composer.lock`'s resolved versions, never
+    `composer.json`'s constraints, and only compare `Modified` lock files
+    — a newly added or fully deleted `composer.lock` has no "before" or
+    "after" side to compare against, so neither rule fires on those.
+- `ticoscope:check` runs the real diff and all fourteen rules, prints the
   changed-file list (with classification), and renders findings through a
   real `ConsoleReporter` — grouped by severity (critical, then warning, then
   info), most severe first.
@@ -111,8 +131,8 @@ and scope.
 - The core domain vocabulary the rest of the tool is built on: `ChangedFile`,
   `Diff`, `Finding`, `Severity`, `Rule`, `Analyzer`, `Reporter`.
 
-Not yet implemented: Composer rules, the `.env.example` cross-reference
-half of the config/env rule, route rules, CI/GitHub Action integration.
+Not yet implemented: the `.env.example` cross-reference half of the
+config/env rule, route rules, CI/GitHub Action integration.
 
 ## Installation
 

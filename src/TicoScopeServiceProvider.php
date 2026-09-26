@@ -6,6 +6,8 @@ use Illuminate\Support\ServiceProvider;
 use TicoScope\Analysis\Analyzer;
 use TicoScope\Console\TicoScopeCommand;
 use TicoScope\Git\GitDiffReader;
+use TicoScope\Rules\Composer\ComposerPackageMajorBumpRule;
+use TicoScope\Rules\Composer\ComposerPackageRemovedRule;
 use TicoScope\Rules\Config\EnvWithoutDefaultRule;
 use TicoScope\Rules\Migration\ColumnDroppedRule;
 use TicoScope\Rules\Migration\ColumnRenamedRule;
@@ -38,6 +40,8 @@ final class TicoScopeServiceProvider extends ServiceProvider
             $app->make(ColumnRenamedRule::class),
             $app->make(NonNullableWithoutDefaultRule::class),
             $app->make(ColumnTypeChangedRule::class),
+            $app->make(ComposerPackageMajorBumpRule::class),
+            $app->make(ComposerPackageRemovedRule::class),
         ]));
     }
 
