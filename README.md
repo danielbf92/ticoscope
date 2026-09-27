@@ -6,7 +6,7 @@
 [![Packagist Downloads](https://img.shields.io/packagist/dt/ticoscope/laravel)](https://packagist.org/packages/ticoscope/laravel)
 [![Tests](https://github.com/danielbf92/ticoscope/actions/workflows/tests.yml/badge.svg)](https://github.com/danielbf92/ticoscope/actions/workflows/tests.yml)
 [![PHP Version](https://img.shields.io/packagist/php-v/ticoscope/laravel)](https://packagist.org/packages/ticoscope/laravel)
-![Laravel 11 | 12](https://img.shields.io/badge/laravel-11%20%7C%2012-FF2D20)
+![Laravel 11 | 12 | 13](https://img.shields.io/badge/laravel-11%20%7C%2012%20%7C%2013-FF2D20)
 [![License](https://img.shields.io/packagist/l/ticoscope/laravel)](LICENSE)
 [![GitHub Release](https://img.shields.io/github/v/release/danielbf92/ticoscope)](https://github.com/danielbf92/ticoscope/releases)
 
@@ -22,7 +22,9 @@ a deploy on it the same way it already gates on a failing test.
 ## Requirements
 
 - PHP 8.2, 8.3, or 8.4
-- Laravel (`illuminate/support`/`illuminate/console`) 11 or 12
+- Laravel (`illuminate/support`/`illuminate/console`) 11, 12, or 13 —
+  **Laravel 13 itself requires PHP 8.3 or 8.4**; PHP 8.2 remains valid
+  only alongside Laravel 11 or 12
 
 ## Installation
 
@@ -188,9 +190,11 @@ See each rule's own entry above for anything more specific, and
 
 ## Compatibility & CI
 
-CI runs the full suite against PHP 8.2/8.3/8.4 × Laravel 11/12, plus a
-dedicated `--prefer-lowest` job against the oldest declared combination —
-see [`.github/workflows/tests.yml`](.github/workflows/tests.yml).
+CI runs the full suite against every valid combination of PHP 8.2/8.3/8.4
+and Laravel 11/12/13 (PHP 8.2 × Laravel 13 is excluded — Laravel 13 itself
+requires PHP 8.3+), plus a dedicated `--prefer-lowest` job against the
+oldest declared combination — see
+[`.github/workflows/tests.yml`](.github/workflows/tests.yml).
 
 ## Prior art / related projects
 
